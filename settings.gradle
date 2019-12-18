@@ -1,0 +1,2 @@
+include ':app', ':DataCollection'
+rootProject.name='datawedge_websockets_bridge'

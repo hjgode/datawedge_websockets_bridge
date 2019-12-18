@@ -1,0 +1,74 @@
+<html>
+<head>
+	<META HTTP-EQUIV="CACHE-CONTROL" CONTENT="NO-CACHE">
+	<META HTTP-EQUIV="PRAGMA" CONTENT="NO-CACHE">
+	<META HTTP-EQUIV="EXPIRES" CONTENT="0">
+<!-- one option IE specific -->
+<meta name="mobileoptimized" content="0" />
+
+<!-- one option custom standard -->
+<meta name="viewport" content="width=240, initial-scale=1, maximum-scale=1, minimum-scale=1">
+
+<script type="text/javaScript">
+
+      var connection=null;
+      function getJsonStr(action, key, value){
+        var obj = new Object();
+        obj.action = action; // SCANNER EXT_SCANNER
+        obj.extra_key  = key; // SUSPEND RESUME
+        obj.extra_value = value;
+        var jsonString= JSON.stringify(obj);
+        return jsonString;
+      }
+
+      function setup(){
+        connection = new WebSocket('ws://127.0.0.1:12345');
+
+        // When the connection is open, send some data to the server
+        connection.onopen = function () {
+          doLog("onopen");
+          connection.send('Ping'); // Send the message 'Ping' to the server
+          var s=getJsonStr("SCANNER", "SUSPEND", "");
+          connection.send(s);
+        };
+        
+        // Log errors
+        connection.onerror = function (error) {
+          doLog("websocket error "+ error);
+        };
+        
+        // Log messages from the server
+        connection.onmessage = function (e) {
+            doLog("server: " + e.data);
+        };
+        //invoke callback
+        //onOpenCallback("websocket ready");
+    }
+    function suspendReader(){
+        if(connection){
+          var s=getJsonStr("SCANNER", "SUSPEND", "");
+            connection.send(s);
+        }
+    }
+    function resumeReader(){
+        if(connection){
+          var s=getJsonStr("SCANNER", "RESUME", "");
+            connection.send(s);
+        }
+    }
+
+    function doLog(msg){
+        console.log(msg);
+        var logMsgElement = document.getElementById("logMsg");
+        document.getElementById("logMsg").innerHTML += "<br>\r\n" + msg;
+    }
+</script>
+</head>
+<body onload="setup()">
+Hello
+<button onclick="resumeReader();">RESUME BarcodeReader</button><br>
+<button onclick="suspendReader();">SUSPEND BarcodeReader</button><br>
+    <div><b>Log:</b></div>
+      <div id="logMsg"></div>
+</body>
+</html>
