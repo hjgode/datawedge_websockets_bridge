@@ -27,7 +27,7 @@ public class MySocketServer extends WebSocketServer
 {
 
     private WebSocket mSocket = null;
-    private static final String TAG = "myDatawedge So Srv";
+    private static final String TAG = "Datawedge So Srv";
     private List<String> config = null;
     private Context context;
     // Play media (doesn't work)
@@ -102,30 +102,16 @@ public class MySocketServer extends WebSocketServer
         this.config = config;
     }
 
-    private static MySocketServer mySocketServer=null;
-
-    public static MySocketServer getMySocketServer(InetSocketAddress address, Context context) {
-        if(mySocketServer==null){
-            mySocketServer=new MySocketServer(address, context);
-        }
-        return mySocketServer;
-    }
-
-    private MySocketServer(InetSocketAddress address, Context context) {
+    public MySocketServer(InetSocketAddress address, Context context) {
         super(address);
         this.context = context;
 
-        if (clientBarcode==null) {
-            clientBarcode = BarcodeHandler.getInstance(context.getApplicationContext());// new BarcodeHandler(context.getApplicationContext());
+        if (btDisc==null) {
+            btDisc = MainActivity.getBTDiscovery();
+            if (btDisc!=null) {
+                extScannerName = btDisc.getCurrDevice();
+            }
         }
-
-
-//        if (btDisc==null) {
-//            btDisc = MainActivity.getBTDiscovery();
-//            if (btDisc!=null) {
-//                extScannerName = btDisc.getCurrDevice();
-//            }
-//        }
     }
 
     @Override
@@ -137,33 +123,42 @@ public class MySocketServer extends WebSocketServer
         WebSocket oldConn = mSocket;
         mSocket = conn;
         Log.d(TAG, "onOpen - new WSebSocket is '" + conn.toString() + "'");
-       if (oldConn!=null && oldConn.isOpen())
-       {
-           Log.d(TAG, "onOpen - old WSebSocket is '" + oldConn.toString() + "'");
-           oldConn.close();
-       }
+        if (clientBarcode==null) {
+            clientBarcode = BarcodeHandler.getInstance(context.getApplicationContext());// new BarcodeHandler(context.getApplicationContext());
+            Log.d(TAG, "onOpen - getting barcodeHandler instance");
+        }
+        if (oldConn!=null && oldConn.isOpen())
+        {
+            if (conn == oldConn)
+            {
+                Log.d(TAG, "onOpen - same socket is opened twice??  Skipping cleanup.'");
+            }
+            else
+            {
+                Log.d(TAG, "onOpen - old WSebSocket is '" + oldConn.toString() + "'");
+                oldConn.close();
+            }
+        }
         Log.i(TAG, "onOpen from " + mSocket.getRemoteSocketAddress().getAddress().toString());
         enableScanner();
         String message = "ConfPath (" + sita_conf_path + ")";
         mSocket.send(message);
-
-//        if (btDisc==null)
-//        {
-//            btDisc = MainActivity.getBTDiscovery();
-//        }
-//        if (btDisc==null || config==null)
-//        {
-//            message = "StartApp (" + "com.darryncampbell.datawedge_websockets_bridge" + ")";
-//            mSocket.send(message);
-//        } else {
-//            extScannerName = btDisc.getCurrDevice();
-//        }
-//        sendExtConnectedScanner(extScannerName);
-//        if (btDisc!=null)
-//        {
-//            btDisc.sendDeviceList();
-//        }
-
+        if (btDisc==null)
+        {
+            btDisc = MainActivity.getBTDiscovery();
+        }
+        if (btDisc==null || config==null)
+        {
+            message = "StartApp (" + "com.darryncampbell.datawedge_websockets_bridge" + ")";
+            mSocket.send(message);
+        } else {
+            extScannerName = btDisc.getCurrDevice();
+        }
+        sendExtConnectedScanner(extScannerName);
+        if (btDisc!=null)
+        {
+            btDisc.sendDeviceList();
+        }
         Log.i(TAG, message);
         /*
         message = "Config {" + config.toString() + "}";
@@ -181,6 +176,7 @@ public class MySocketServer extends WebSocketServer
             Log.d(TAG, "onClose - connected Socket failed.");
             //disableScanner();
             clientBarcode.close(); //cleanUp
+            clientBarcode = null;
             mSocket = null;
         }
         else

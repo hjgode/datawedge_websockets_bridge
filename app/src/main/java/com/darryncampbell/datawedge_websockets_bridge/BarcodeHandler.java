@@ -6,22 +6,24 @@ import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.util.Log;
 
 import android.content.Context;
+import android.app.ActivityManager;
 
 import com.honeywell.aidc.*;
 
-public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeReader.TriggerListener {
+public class BarcodeHandler  implements BarcodeReader.BarcodeListener,
+        BarcodeReader.TriggerListener {
 
     private static final String TAG = "Datawedge BC Activity";
     private static final String BROWSER_APP_NAME = "sita";
 
     private AidcManager manager;
-    private static com.honeywell.aidc.BarcodeReader barcodeReader; //normally this should be wrapped as a singleton
+    private static com.honeywell.aidc.BarcodeReader barcodeReader=null; //normally this should be wrapped as a singleton
     private static MySocketServer mServer;
+
     private Timer barcodeTimer = null;
     private Context inContext = null;
     private static boolean bIsClaimed=false;
@@ -29,6 +31,7 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
     private boolean scannerDisable = false;
 
     private static BarcodeHandler barcodeHandler=null;
+
 
     public static BarcodeHandler getInstance(Context context){
         if(barcodeHandler==null){
@@ -43,6 +46,7 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
     //@Override
     private BarcodeHandler (Context context) {
         Log.d(TAG, "In Constructor");
+        inContext = context;
         checkMServer();
         barcodeTimer = new Timer();
         barcodeTimer.schedule(new MyTimerTask(), 200, 200);
@@ -51,7 +55,7 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
             public void onCreated(AidcManager aidcManager) {
                 manager = aidcManager;
                 try {
-                    if(barcodeReader!=null)
+                    if((barcodeReader == null))
                         barcodeReader = manager.createBarcodeReader();
                     else{
                         Log.d(TAG, "no manager.createBarcodeReader() as barcodeReader not NUL");
@@ -64,12 +68,31 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
         });
     }
 
+    public boolean isBagManInForeground() {
+        final ActivityManager activityManager = (ActivityManager) inContext.getSystemService(Context.ACTIVITY_SERVICE);
+        try {
+            final List<ActivityManager.RunningTaskInfo> tasks = activityManager.getRunningTasks(1);
+            if (!tasks.isEmpty()) {
+                final ComponentName topActivity = tasks.get(0).topActivity;
+                if (topActivity.getPackageName().contains(BROWSER_APP_NAME)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Get tasks list error: " + e.toString(), e);
+        }
+        return false;
+    }
+
     private void setupBarcodeReader() {
         if (barcodeReader != null) {
             barcodeReaderClaim();
 /*
             try {
-                barcodeReader.claim();
+                if (!isBarcodeReaderClaimed) {
+                    barcodeReader.claim();
+                    isBarcodeReaderClaimed = true;
+                }
             } catch (ScannerUnavailableException e) {
                 e.printStackTrace();
                 Log.e(TAG, "Scanner unavailable" + e.toString(), e);
@@ -114,16 +137,16 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
     }
 
     private void checkMServer() {
-        if (mServer == null)
+        if (mServer == null || !mServer.isConnected())
         {
-            Log.d(TAG, "Starting WebSocket Server");
+            Log.d(TAG, "Getting latest WebSocket Server");
             //  Start the WebSocket Server
             mServer = WebSocketIntentService.getMySocketServer();
-            Log.d(TAG, "WebSocket Server started");
+            Log.d(TAG, "Received latest WebSocket Server");
         }
         else
         {
-            Log.v(TAG, "Did not start server as it is already started");
+            Log.v(TAG, "Did not get latest server as it is connected");
         }
 
         /*
@@ -140,7 +163,7 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
 
     @Override
     public void onBarcodeEvent(final BarcodeReadEvent event) {
-        if (mServer==null)
+        if (mServer==null || !mServer.isConnected())
         {
             checkMServer();
         }
@@ -160,8 +183,11 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
         barcodeReaderRelease();
         /*
         if (barcodeReader != null) {
+            if (isBarcodeReaderClaimed) {
                 barcodeReader.release();
+                isBarcodeReaderClaimed = false;
                 Log.d(TAG, "Scanner released.");
+            }
         }
         */
     }
@@ -172,10 +198,13 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
         // claimed it on us in the background...
         checkMServer();
         /*
-        if (barcodeReader != null) {
+        if (barcodeReader != null && isBagManInForeground()) {
             try {
-                barcodeReader.claim();
-                Log.d(TAG, "Scanner claimed.");
+                if (!isBarcodeReaderClaimed) {
+                    barcodeReader.claim();
+                    isBarcodeReaderClaimed = true;
+                    Log.d(TAG, "Scanner claimed.");
+                }
             } catch (ScannerUnavailableException e) {
                 e.printStackTrace();
                 Log.e(TAG, "Scanner.claim(): " + e.toString(), e);
@@ -233,22 +262,7 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
 
     @Override
     public void onFailureEvent(BarcodeFailureEvent arg0) {
-    }
-
-    public boolean isBagManInForeground() {
-        final ActivityManager activityManager = (ActivityManager) inContext.getSystemService(Context.ACTIVITY_SERVICE);
-        try {
-            final List<ActivityManager.RunningTaskInfo> tasks = activityManager.getRunningTasks(1);
-            if (!tasks.isEmpty()) {
-                final ComponentName topActivity = tasks.get(0).topActivity;
-                if (topActivity.getPackageName().contains(BROWSER_APP_NAME)) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Get tasks list error: " + e.toString(), e);
-        }
-        return false;
+        Log.e(TAG, "Barcode decode failure. " + arg0.toString());
     }
 
     private class MyTimerTask extends TimerTask {
@@ -345,34 +359,16 @@ public class BarcodeHandler  implements BarcodeReader.BarcodeListener, BarcodeRe
             barcodeTimer.cancel();
         if(barcodeReader!=null){
             try{
-                enableTrigger();
                 barcodeReaderRelease();
                 barcodeReader.removeBarcodeListener(this);
                 barcodeReader.removeTriggerListener(this);
                 barcodeReader=null;
+                barcodeHandler=null;
             }catch(Exception ex){
                 Log.d(TAG, "barcodeReader close(): close() Exception: " + ex.getMessage());
             }
         }else{
             Log.d(TAG, "barcodeReader close(): barcodeReader was NUL");
-        }
-    }
-
-    public void disableTrigger(){
-        if(barcodeReader!=null){
-            Map<String, Object> properties = new HashMap<String, Object>();
-            // Set Symbologies On/Off
-            properties.put("TRIG_ENABLE", false);
-            barcodeReader.setProperties(properties);
-        }
-    }
-
-    public void enableTrigger(){
-        if(barcodeReader!=null){
-            Map<String, Object> properties = new HashMap<String, Object>();
-            // Set Symbologies On/Off
-            properties.put("TRIG_ENABLE", true);
-            barcodeReader.setProperties(properties);
         }
     }
 }
